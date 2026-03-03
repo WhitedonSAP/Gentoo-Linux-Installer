@@ -57,9 +57,9 @@ sleep 2
 #######
 
 if [ -f mirrors.conf ] && [[ "$(grep -oE 'http|https|ftp|rsync' < mirrors.conf)" != '' ]]; then
-  echo -e "${green}Mirror(s) detected(s) on make.conf file!\nProcceding...${nc}"
+  echo -e "\n${green}Mirror(s) detected(s) on make.conf file!\nProcceding...${nc}\n"
 else
-  echo -e "${red}You have not selected at least one mirror!!!\nAdd it with mirrorselect tool and execute the installer again...${nc}"
+  echo -e "\n${red}You have not selected at least one mirror!!!\nAdd it with mirrorselect tool and execute the installer again...${nc}\n"
   exit
 fi
 
@@ -73,18 +73,14 @@ sleep 2
 while true; do
   if ! curl -s https://www.google.com/ > /dev/null 2>&1
   then
-    echo -e "${red}No Internet connection detected! Check your network settings and try again!${nc}"
-    echo
+    echo -e "\n${red}No Internet connection detected! Check your network settings and try again!${nc}\n"
     read -p "Connect to internet and press 'Enter' to try again"
     continue
   else
-    echo -e "${green}Internet connection detected!!!${nc}"
+    echo -e "\n${green}Internet connection detected!!!${nc}\n"
     break
   fi
 done
-
-## Define mirror
-stage3mirror="$(grep -Po '(?<=GENTOO_MIRRORS=")[^"]*' mirrors.conf | awk '{print $1}' | sed 's,/$,,')"
 
 #######
 #clear
@@ -93,18 +89,19 @@ echo -e "\n${magentab}Choose the Architecture...${nc}\n"
 sleep 2
 #######
 
-printf "${blue}
+printf "\n${blue}
   ###################################################################
   #       #                                                         #
   # amd64 #         Architecture x86_64 (64 bits)                   #
   #       #                                                         #
   ###################################################################
   #       #                                                         #
-  #  x86  #          Architecture x86 (32 bits)                     #
+  #  x86  #         Architecture x86 (32 bits)                      #
   #       #                                                         #
-  ###################################################################\n\n${nc}"
+  ###################################################################\n${nc}"
 echo -e "\n${yellow}Which Architecture would you like to use?${nc}"
 read -p "Amd64(a/A) or x86(x/X) - (Type a/A or x/X): " archselect
+echo
 if [ "$archselect" = 'amd64' ] || [ "$archselect" = 'a' ]; then
   stage_arch='amd64'
 elif [ "$archselect" = 'x86' ] || [ "$archselect" = 'x' ]; then
@@ -118,7 +115,7 @@ echo -e "\n${magentab}Choose the System Init...${nc}\n"
 sleep 2
 #######
 
-printf "${blue}
+printf "\n${blue}
   ###################################################################
   #         #                                                       #
   # OpenRC  #               System Init OpenRC                      #
@@ -127,9 +124,10 @@ printf "${blue}
   #         #                                                       #
   # Systemd #               System Init Systemd                     #
   #         #                                                       #
-  ###################################################################\n\n${nc}"
+  ###################################################################\n${nc}"
 echo -e "\n${yellow}Which System Init would you like to use?${nc}"
 read -p "OpenRC(o/O) or Systemd(s/S) - (Type o/O or s/S): " initselect
+echo
 if [ "$initselect" = 'o' ] || [ "$initselect" = 'O' ]; then
   stage_init='openrc'
 elif [ "$initselect" = 's' ] || [ "$initselect" = 'S' ]; then
@@ -143,15 +141,18 @@ echo -e "\n${magentab}Choose the Stage3...${nc}\n"
 sleep 2
 #######
 
+## Define mirror
+stage3mirror="$(grep -Po '(?<=GENTOO_MIRRORS=")[^"]*' mirrors.conf | awk '{print $1}' | sed 's,/$,,')"
+
 if [ "$stage_arch" = 'amd64' ]; then
   wget "$stage3mirror/releases/amd64/autobuilds/latest-stage3.txt" > /dev/null 2>&1
-  printf "${blue}
+  printf "\n${blue}
   ###################################################################
   #                 Architecture x86_64 (64 bits)                   #
   ###################################################################${nc}"
 elif [ "$stage_arch" = 'x86' ]; then
   wget "$stage3mirror/releases/x86/autobuilds/latest-stage3.txt" > /dev/null 2>&1
-  printf "${blue}
+  printf "\n${blue}
   ###################################################################
   #                 Architecture x86 (32 bits)                      #
   ###################################################################${nc}"
@@ -160,21 +161,21 @@ fi
 if [ "$stage_init" = 'openrc' ]; then
   printf "${blue}
   #                            OpenRC                               #
-  ###################################################################\n\n${nc}"
+  ###################################################################\n${nc}"
   grep -w 'stage3' < latest-stage3.txt | grep -v -e 'systemd' | cut -d "/" -f 2 | awk '{print $1}' | nl | sed 's/^..//' | sed 's/./&)/4' > stage3-list.txt && rm latest-stage3.txt
 elif [ "$stage_init" = 'systemd' ]; then
   printf "${blue}
   #                            Systemd                              #
-  ###################################################################\n\n${nc}"
+  ###################################################################\n${nc}"
   grep -w 'systemd' < latest-stage3.txt | cut -d "/" -f 2 | awk '{print $1}' | nl | sed 's/^..//' | sed 's/./&)/4' > stage3-list.txt && rm latest-stage3.txt
 fi
 
+echo
 cat stage3-list.txt
-
 echo
 echo -e "\n${yellow}Which Stage would you like to use?${nc}"
 read -p "Enter your option (Type a number): " stageselect
-echo -e "${green}Stage selected, continuing...${nc}"
+echo -e "\n${green}Stage selected, continuing...${nc}\n"
 
 #######
 #clear
