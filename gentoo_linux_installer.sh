@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #######################################################################################
 #                                                                                     #
-#  Gentoo-Linux-Installer (GLI) v2.0.0 - Unofficial Installer for Gentoo Linux        #
+#  Gentoo-Linux-Installer (GLI) v2.1.0 - Unofficial Installer for Gentoo Linux        #
 #                                                                                     #
 #  Refactored for robust error handling, modularity, and modern bash practices.       #
 #                                                                                     #
@@ -41,7 +41,19 @@ cleanup() {
     msg_info "Cleaning up mounts (if any)..."
     umount -lR "${GLCHROOT}" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+
+# Function to handle force stop (Ctrl+C)
+force_abort() {
+    echo -e "\n${RED}=========================================${NC}"
+    echo -e "${RED}  INSTALLATION ABORTED BY USER (Ctrl+C)  ${NC}"
+    echo -e "${RED}=========================================${NC}\n"
+    # O exit 130 acionará automaticamente a função cleanup() mapeada no EXIT
+    exit 130
+}
+
+# Configurando os Traps (Gatilhos)
+trap force_abort INT TERM  # Se o usuário apertar Ctrl+C (INT) ou o script for morto (TERM)
+trap cleanup EXIT          # Sempre executa ao sair do script (seja por sucesso, erro ou Ctrl+C)
 
 # Prompt user for yes/no
 ask_yes_no() {
@@ -432,7 +444,7 @@ clear
 echo -e "${MAGENTA}"
 echo "#####################################################################"
 echo "#                                                                   #"
-echo "#          Gentoo Linux Automated Installer (GLI v2.0)              #"
+echo "#          Gentoo Linux Automated Installer (GLI v2.1)              #"
 echo "#                                                                   #"
 echo "#####################################################################"
 echo -e "${NC}"
@@ -450,7 +462,9 @@ msg_step "Installation Finished!"
 msg_info "The trap cleanup will now unmount the directories safely."
 # Explicit cleanup before natural exit ensures everything is flushed
 cleanup
-trap - EXIT INT TERM # Remove trap since we manually cleaned up
+
+# Remove os gatilhos, pois o script terminou com sucesso e já limpou
+trap - EXIT INT TERM 
 
 msg_ok "System is ready! You can now reboot."
 exit 0
