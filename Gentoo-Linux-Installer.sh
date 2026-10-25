@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #######################################################################################
 #                                                                                     #
-#  Gentoo-Linux-Installer (GLI) v2.3.0 - Unofficial Installer for Gentoo Linux        #
+#  Gentoo-Linux-Installer (GLI) v2.6.0 - Unofficial Installer for Gentoo Linux        #
 #                                                                                     #
 #  Refactored for robust error handling, modularity, and modern bash practices.       #
 #                                                                                     #
@@ -16,6 +16,7 @@ GLCHROOT="/mnt/gentoo"
 STAGE3_MIRROR=""
 STAGE_ARCH=""
 STAGE_INIT=""
+USE_BINPKGS="no"
 BOOT_MODE="legacy"
 INSTALL_DISK="hdd"
 
@@ -29,6 +30,17 @@ CYAN='\033[1;36m'
 NC='\033[0m' # No Color
 
 #################################### Helper Functions #################################
+
+print_banner() {
+    clear
+    echo -e "${MAGENTA}"
+    echo "#####################################################################"
+    echo "#                                                                   #"
+    echo "#          Gentoo Linux Automated Installer (GLI v2.6)              #"
+    echo "#                                                                   #"
+    echo "#####################################################################"
+    echo -e "${NC}"
+}
 
 msg_step() { echo -e "\n${MAGENTA}>>> $1${NC}\n"; sleep 1; }
 msg_info() { echo -e "${BLUE}INFO:${NC} $1"; }
@@ -47,13 +59,12 @@ force_abort() {
     echo -e "\n${RED}=========================================${NC}"
     echo -e "${RED}  INSTALLATION ABORTED BY USER (Ctrl+C)  ${NC}"
     echo -e "${RED}=========================================${NC}\n"
-    # O exit 130 acionará automaticamente a função cleanup() mapeada no EXIT
     exit 130
 }
 
 # Configurando os Traps (Gatilhos)
-trap force_abort INT TERM  # Se o usuário apertar Ctrl+C (INT) ou o script for morto (TERM)
-trap cleanup EXIT          # Sempre executa ao sair do script (seja por sucesso, erro ou Ctrl+C)
+trap force_abort INT TERM
+trap cleanup EXIT
 
 # Prompt user for yes/no
 ask_yes_no() {
@@ -70,30 +81,37 @@ ask_yes_no() {
 
 #################################### Core Functions ###################################
 
-ensure_mirrorselect() {
-    msg_info "Checking if 'mirrorselect' is installed on the live system..."
-    if ! command -v mirrorselect >/dev/null 2>&1; then
-        msg_warn "'mirrorselect' not found! Installing it now (this may take a moment)..."
-        # Executa o comando de instalação solicitado
-        emerge -q mirrorselect || msg_err "Failed to install mirrorselect! Please check your live environment."
-        msg_ok "'mirrorselect' installed successfully!"
+ensure_live_tools() {
+    msg_info "Checking for required live environment tools (mirrorselect, genfstab)..."
+    local missing_tools=""
+
+    command -v mirrorselect >/dev/null 2>&1 || missing_tools="app-portage/mirrorselect"
+    command -v genfstab >/dev/null 2>&1 || missing_tools="${missing_tools} sys-fs/genfstab"
+
+    if [[ -n "${missing_tools}" ]]; then
+        msg_warn "Missing tools detected. Installing: ${missing_tools}"
+        # Execute emerge silently but show progress
+        emerge -q ${missing_tools} || msg_err "Failed to install required tools! Please check your LiveGUI connection."
+        msg_ok "Tools installed successfully!"
     else
-        msg_ok "'mirrorselect' is already installed."
+        msg_ok "All required live tools are present."
     fi
 }
 
 ensure_mirrors() {
     msg_info "Checking for selected mirrors..."
     
-    # Se o arquivo não existir ou não contiver URLs válidas, abre o mirrorselect interativamente
     if ! [[ -f mirrors.conf ]] || ! grep -qE 'http|https|ftp|rsync' mirrors.conf; then
         msg_warn "No valid mirrors.conf found. Launching mirrorselect..."
         sleep 2
         
-        # Roda o mirrorselect e salva no arquivo. O '|| true' previne crash caso o usuário cancele
         mirrorselect -i -o > mirrors.conf || true
         
-        # Verifica novamente se o usuário selecionou de fato algum mirror ou se abortou
+        # O mirrorselect (assim como o cfdisk) limpa o terminal do TTY após ser fechado.
+        # Nós chamamos o print_banner novamente para manter o contexto visual ativo.
+        print_banner
+        msg_step "Checking Prerequisites (Continued)"
+        
         if [[ -f mirrors.conf ]] && grep -qE 'http|https|ftp|rsync' mirrors.conf; then
             msg_ok "Mirror(s) successfully selected and saved to mirrors.conf"
         else
@@ -103,8 +121,6 @@ ensure_mirrors() {
         msg_ok "Mirror(s) detected in mirrors.conf"
     fi
 
-    # Extrai o primeiro mirror da lista para usar no download do stage3
-    # O '|| true' protege o script do 'set -e' caso o grep não ache a regex exata
     STAGE3_MIRROR=$(grep -Po '(?<=GENTOO_MIRRORS=")[^"]*' mirrors.conf | awk '{print $1}' | sed 's,/$,,' || true)
 
     if [[ -z "$STAGE3_MIRROR" ]]; then
@@ -125,10 +141,10 @@ check_prerequisites() {
     fi
     msg_ok "Internet connection active!"
 
-    # Garante que o pacote mirrorselect está instalado
-    ensure_mirrorselect
+    # Instala mirrorselect e genfstab se estiverem faltando
+    ensure_live_tools
 
-    # Pede para o usuário escolher o espelho ou carrega o existente
+    # Processa os espelhos
     ensure_mirrors
 
     if [ -d /sys/firmware/efi/efivars ]; then
@@ -139,7 +155,7 @@ check_prerequisites() {
     fi
 }
 
-select_architecture_and_init() {
+select_system_options() {
     msg_step "System Configuration"
     
     while true; do
@@ -159,6 +175,15 @@ select_architecture_and_init() {
             *) msg_warn "Invalid option.";;
         esac
     done
+
+    echo
+    if ask_yes_no "Use official binary packages to speed up installation (highly recommended)?"; then
+        USE_BINPKGS="yes"
+        msg_info "Binary packages enabled."
+    else
+        USE_BINPKGS="no"
+        msg_info "Packages will be compiled from source."
+    fi
 }
 
 select_stage3() {
@@ -219,6 +244,10 @@ configure_disks() {
             cfdisk "$HD_DEV"
         fi
         sync
+        
+        # Redesenha a tela após o cfdisk
+        print_banner
+        msg_step "Disk and Partitioning (Continued)"
     fi
 
     echo -e "\n${CYAN}Available partitions:${NC}"
@@ -335,8 +364,13 @@ configure_base() {
     else
         cp -f systemd/make.conf "$GLCHROOT/etc/portage/make.conf"
     fi
-    cp -f binhost/gentoobinhost.conf "$GLCHROOT/etc/portage/binrepos.conf/"
+    
     cat mirrors.conf >> "$GLCHROOT/etc/portage/make.conf"
+
+    # Habilita suporte a Binpkgs condicionalmente
+    if [ "$USE_BINPKGS" = "yes" ]; then
+        echo 'FEATURES="${FEATURES} getbinpkg"' >> "$GLCHROOT/etc/portage/make.conf"
+    fi
 
     # CPU Makeopts calculation
     local cores=$(nproc)
@@ -346,7 +380,6 @@ configure_base() {
     else make_opts=$((cores - 4)); fi
     [ "$make_opts" -lt 1 ] && make_opts=1
 
-    sed -i "s/xACCEPT_KEYWORDSx/${STAGE_ARCH}/" "$GLCHROOT/etc/portage/make.conf"
     sed -i "s/xCPU_FLAGS_X86x/$(cpuid2cpuflags | cut -d':' -f2 | sed 's/^ *//')/" "$GLCHROOT/etc/portage/make.conf"
     sed -i "s/xMAKEOPTSx/${make_opts}/" "$GLCHROOT/etc/portage/make.conf"
 
@@ -387,7 +420,7 @@ configure_base() {
 execute_in_chroot() {
     msg_step "Chroot Operations (Portage, Profile, Compiling)"
     
-    # Create a script to run inside the chroot
+    # Criar a primeira parte do script de chroot
     cat << 'EOF' > "$GLCHROOT/tmp/chroot_script.sh"
 #!/bin/bash
 set -euo pipefail
@@ -396,12 +429,23 @@ source /etc/profile
 echo ">>> Syncing portage..."
 emerge-webrsync
 
-# Keep default profile unless specified otherwise manually later
+# Setup package.use for Kernel and Grub
 echo ">>> Setting basic package uses..."
 mkdir -p /etc/portage/package.use
-echo "sys-kernel/installkernel dracut grub" > /etc/portage/package.use/kernel
-echo "sys-kernel/linux-firmware initramfs" >> /etc/portage/package.use/kernel
+echo "sys-kernel/installkernel dracut grub" > /etc/portage/package.use/installkernel
+echo "sys-kernel/linux-firmware initramfs" >> /etc/portage/package.use/linux-firmware
+EOF
 
+    # Se o usuário escolheu usar pacotes binários, adicionar getuto no script
+    if [ "$USE_BINPKGS" = "yes" ]; then
+        cat << 'EOF' >> "$GLCHROOT/tmp/chroot_script.sh"
+echo ">>> Fetching getuto to set up binary package signatures..."
+getuto
+EOF
+    fi
+
+    # Finaliza a lógica de emerge no script de chroot
+    cat << 'EOF' >> "$GLCHROOT/tmp/chroot_script.sh"
 echo ">>> Emerging @world (this will take time)..."
 emerge -aquDN --with-bdeps=y @world
 emerge -aq --depclean
@@ -415,7 +459,7 @@ locale-gen
 eselect locale set en_US.utf8
 env-update && source /etc/profile
 
-echo ">>> Installing Kernel and Firmware..."
+echo ">>> Installing pre-compiled Kernel and Firmware..."
 emerge -q sys-kernel/gentoo-kernel-bin sys-kernel/linux-firmware
 
 echo ">>> Installing System Utilities..."
@@ -456,6 +500,14 @@ post_install_config() {
     # GRUB Installation
     msg_info "Installing GRUB Bootloader..."
     sed -i '/#GRUB_GFXMODE=/c\GRUB_GFXMODE=auto' "$GLCHROOT/etc/default/grub"
+    
+    # Configure GRUB wallpaper if it exists in the repository
+    if [[ -f "grub/gentoo-wallpaper.png" ]]; then
+        mkdir -p "$GLCHROOT/boot/grub"
+        cp grub/gentoo-wallpaper.png "$GLCHROOT/boot/grub/"
+        sed -i '/#GRUB_BACKGROUND=/c\GRUB_BACKGROUND="/boot/grub/gentoo-wallpaper.png"' "$GLCHROOT/etc/default/grub"
+    fi
+
     if [ "$STAGE_INIT" = 'systemd' ]; then
         sed -i '/#GRUB_CMDLINE_LINUX_DEFAULT=/c\GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"' "$GLCHROOT/etc/default/grub"
     fi
@@ -481,17 +533,10 @@ post_install_config() {
 
 #################################### Main Execution ###################################
 
-clear
-echo -e "${MAGENTA}"
-echo "#####################################################################"
-echo "#                                                                   #"
-echo "#          Gentoo Linux Automated Installer (GLI v2.3)              #"
-echo "#                                                                   #"
-echo "#####################################################################"
-echo -e "${NC}"
+print_banner
 
 check_prerequisites
-select_architecture_and_init
+select_system_options
 select_stage3
 configure_disks
 install_stage3
