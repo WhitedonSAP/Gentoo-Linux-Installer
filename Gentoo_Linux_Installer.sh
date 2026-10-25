@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #######################################################################################
 #                                                                                     #
-#  Gentoo-Linux-Installer (GLI) v3.0.0 - TUI Edition                                  #
+#  Gentoo-Linux-Installer (GLI) v3.0.1 - TUI Edition                                  #
 #                                                                                     #
 #  Refactored with dialog for a fully interactive Text User Interface (TUI) wizard.   #
 #                                                                                     #
@@ -53,7 +53,6 @@ msg_err()  { echo -e "\n${RED}ERROR:${NC} $1\n"; exit 1; }
 
 cleanup() {
     tput cnorm 2>/dev/null || true
-    clear 2>/dev/null || true
     msg_info "Cleaning up mounts (if any)..."
     umount -lR "${GLCHROOT}" 2>/dev/null || true
 }
@@ -145,9 +144,14 @@ ensure_mirrors() {
 
 check_prerequisites() {
     if [[ $EUID -ne 0 ]]; then msg_err "This script must be run as root!"; fi
+    
+    msg_step "Checking Prerequisites"
+    
+    msg_info "Testing internet connection..."
     if ! curl -s --connect-timeout 5 https://www.google.com/ > /dev/null; then
         msg_err "No Internet connection detected! Check your network settings."
     fi
+    msg_ok "Internet connection active!"
     
     if [ -d /sys/firmware/efi/efivars ]; then BOOT_MODE='uefi'; fi
 
@@ -502,6 +506,9 @@ post_install_config() {
 }
 
 #################################### Main Execution ###################################
+
+# Limpa o terminal antes de iniciar a execução e impressões
+clear
 
 check_prerequisites
 run_wizard
